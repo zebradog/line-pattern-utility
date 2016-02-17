@@ -1,0 +1,238 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>haiku 7</title>
+<script src="tsunami/geom/Vector3D.js"></script>
+<script src="tsunami/geom/Path3DSegment.js"></script>
+<script src="lib/three.min.js"></script>
+<script src="lib/TrackballControls.js"></script>
+<style type="text/css">
+	body, html {
+		margin:0;
+		padding:0;
+		overflow:hidden;
+	}
+</style>
+</head>
+
+<body>
+<script>
+
+var camera;
+var scene;
+var renderer;
+var objects;
+var geometry;
+var plane;
+var objects;
+var mouse2D;
+var raycaster;
+var draw;
+var vectors;
+var ribbon;
+var origin;
+var axisX = new THREE.Vector3(1, 0, 0);
+var axisY = new THREE.Vector3(0, 1, 0);
+var axisZ = new THREE.Vector3(0, 0, 1);
+var spline;
+var vectorsTotal = 5;//250;
+var segments = vectorsTotal - 1;
+var curves = segments - 1;
+var segmentsPerCurve = 5;
+var divisions = curves * segmentsPerCurve;
+var verticesTotal = divisions + 1;
+var lineHeight = 200;//100;
+var rotMultipler = 5 * Math.PI / 180;
+
+var targetX = 0;
+var targetY = 0;
+var mouseX = 0;
+var mouseY = 0;
+
+var backgroundColor = 0xffffff;
+
+init();
+
+function init() {
+	var width = window.innerWidth;
+	var height = window.innerHeight;
+
+	camera = new THREE.PerspectiveCamera(60, width / height, 100, 2000);
+	camera.position.z = 750;
+
+	scene = new THREE.Scene();
+
+	renderer = new THREE.WebGLRenderer({antialias: true});
+	//renderer.setClearColor(0xffffff, 0);
+	renderer.setSize(width, height);
+	document.body.appendChild(renderer.domElement);
+
+	raycaster = new THREE.Raycaster();
+	origin = new THREE.Vector3();
+	vectors = [];
+	var points = [];
+	for (var i = 0; i < vectorsTotal; i++) {
+		vectors.push({position:new THREE.Vector3(), tangent:new THREE.Vector3()});
+		points.push(new THREE.Vector3());
+	}
+	spline = new THREE.Spline(points);
+
+	geometry = new THREE.PlaneGeometry(2000, 100, divisions);
+	//geometry = new THREE.Geometry();
+
+
+	var crateLoader = new THREE.TextureLoader();
+	crateLoader.load(
+	// resource URL
+	'textures/crate.png',
+	// Function when resource is loaded
+	function ( texture ) {
+		// do something with the texture
+		texture.anisotropy = renderer.getMaxAnisotropy();
+		//var ribbonMaterial = new THREE.MeshLambertMaterial( {wireframe: false, transparent:true, map:texture, bumpMap:null, bumpScale:2, normalMap:null, specularMap:null, envMap:null, ambient: 0xaaaaaa, alpha:1, color: 0x00A3E0, specular: 0xffffff, shininess: 50, shading: THREE.SmoothShading, side:THREE.DoubleSide }  )
+		var ribbonMaterial = new THREE.MeshLambertMaterial( {wireframe: false, transparent:true, map:texture,  specularMap:null, envMap:null, color: 0x00A3E0,  side:THREE.DoubleSide }  )
+		ribbon = new THREE.Mesh(geometry, ribbonMaterial);
+		ribbon.position.z = 1;
+		scene.add(ribbon);
+
+	});
+
+
+	/*var light = new THREE.PointLight( 0xffffff, 3);
+   light.position.set( width*4, height*4, height );
+   scene.add( light );*/
+
+   var lightAmbient = new THREE.PointLight( 0xffffff,3);
+   lightAmbient.position.set( 0,0,width);
+   scene.add( lightAmbient );
+
+	window.addEventListener('resize', onWindowResize, false);
+	window.addEventListener('mousemove', mouseMove, false);
+
+	objects = [];
+
+
+	var mooreLoader = new THREE.TextureLoader();
+	mooreLoader.load(
+	// resource URL
+	'img/ChrisMoore_ZD_Headshot.png',
+	// Function when resource is loaded
+	function ( texture ) {
+		// do something with the texture
+		var mooreMesh = new THREE.MeshBasicMaterial({ //CHANGED to MeshBasicMaterial
+			 map:texture,
+			 transparent: true
+		});
+		mooreMesh.map.needsUpdate = true; //ADDED
+
+		var moorePlane =  new THREE.Mesh(new THREE.PlaneGeometry(188, 300), mooreMesh);
+		//moorePlane.position.z = -1;
+		scene.add(moorePlane);
+
+	});
+
+	plane = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshBasicMaterial({color:0xffffff}));
+	plane.visible = true;
+	scene.add(plane);
+	objects.push(plane);
+
+
+	mouse2D = new THREE.Vector3(0, 0, 0);
+
+	onWindowResize();
+
+	render();
+}
+
+function onWindowResize() {
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+
+	renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+
+function mouseMove(event) {
+	targetX = event.clientX - window.innerWidth / 2;
+	targetY = event.clientY - window.innerHeight / 2;
+}
+
+function render() {
+	mouseX += (targetX - mouseX) * 0.1;
+	mouseY += (targetY - mouseY) * 0.1;
+	mouse2D.x = mouseX / (window.innerWidth / 2);
+	mouse2D.y = -mouseY / (window.innerHeight / 2);
+
+	for (var i = 0; i < vectors.length - 1; i++) {
+		var vector = vectors[i];
+		vector.position.copy(vectors[i + 1].position);
+		vector.tangent.copy(vectors[i + 1].tangent);
+
+	}
+
+	raycaster.setFromCamera(mouse2D.clone(), camera);
+	var intersects = raycaster.intersectObjects(objects);
+	var intersector;
+	for (var i = 0; i < intersects.length; i++) {
+		if (intersects[i].object == plane) {
+			intersector = intersects[i];
+		}
+	}
+
+	if (intersector) {
+		var newVector = vectors[vectors.length - 1];
+		newVector.position.copy(intersector.point);
+
+		var angle = Math.PI / 2;
+		var tangentVector = tsunami.geom.Vector3D.polar(1, angle);
+		newVector.tangent.x = tangentVector.x;
+		newVector.tangent.y = tangentVector.y;
+		newVector.tangent.z = tangentVector.z;
+	}
+
+	for (var k = 0; k < 2; k++) {
+		var points = spline.points;
+		for (var j = 0; j < vectors.length; j++) {
+			var vector = vectors[j];
+			var point = points[j];
+			point.copy(vector.position);
+			var tangent = vector.tangent.clone();
+			tangent.multiplyScalar(lineHeight / 2);
+			if (k == 0) {
+				point.sub(tangent);
+			} else {
+				point.add(tangent);
+			}
+		}
+
+		for (var m = 0; m < verticesTotal; m++) {
+			var vertice = geometry.vertices[m + verticesTotal * k];
+			var multiplier = m / (verticesTotal - 1);
+			var splinePoint = spline.getPoint(multiplier);
+			vertice.copy(splinePoint);
+		}
+
+	}
+
+	geometry.computeFaceNormals();
+	geometry.computeVertexNormals();
+	geometry.verticesNeedUpdate = true;
+	geometry.normalsNeedUpdate = true;
+
+	renderer.render( scene, camera );
+
+	requestAnimationFrame( render );
+}
+
+
+function rotateAroundWorldAxis(axis, radians, object) {
+	var quaternion = new THREE.Quaternion();
+	quaternion.setFromAxisAngle( axis, radians );
+	object.quaternion.multiplyQuaternions( quaternion, object.quaternion );
+}
+
+</script>
+</body>
+</html>
